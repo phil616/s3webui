@@ -1,31 +1,12 @@
 apiVersion: v2
 name: s3webui
-description: A graphical web interface for S3 object storage
+description: Go/PostgreSQL downstream of S3 Web UI
+version: 2.0.0-go.1
+appVersion: "2.0.0-go.1"
 type: application
-version: 1.6.0
-appVersion: "1.6.0"
-keywords:
-  - s3
-  - object-storage
-  - minio
-  - webui
-home: https://github.com/wenisch-tech/s3webui
+keywords: [s3, object-storage, webui, postgres]
 sources:
   - https://github.com/wenisch-tech/s3webui
-maintainers:
-  - name: Jean-Fabian Wenisch
-    url: https://github.com/JFWenisch
 annotations:
-  # Makes the GHCR OCI package display wenisch-tech/s3webui as its source repository.
-  org.opencontainers.image.source: https://github.com/wenisch-tech/s3webui
-  artifacthub.io/category: storage
-  artifacthub.io/license: AGPL-3.0
-  artifacthub.io/prerelease: "false"
-  artifacthub.io/images: |
-    - name: s3webui
-      image: ghcr.io/wenisch-tech/s3webui:latest
-  artifacthub.io/links: |
-    - name: GitHub Repository
-      url: https://github.com/wenisch-tech/s3webui
-    - name: Container Registry
-      url: https://github.com/wenisch-tech/s3webui/pkgs/container/s3webui
+  artifacthub.io/license: AGPL-3.0-only
+  artifacthub.io/prerelease: "true"

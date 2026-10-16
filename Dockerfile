@@ -1,31 +1,19 @@
-# syntax=docker/dockerfile:1.27
+FROM golang:1.27-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# Include preferred source, build scripts, notices and Go dependencies.
+RUN go mod vendor && tar -czf /source.tar.gz . && CGO_ENABLED=0 go build -mod=vendor -trimpath -o /s3webui ./cmd/s3webui
 
-FROM cgr.dev/chainguard/jre:latest
-WORKDIR /app
-
-ARG BUILD_DATE
-ARG BUILD_VERSION
-ARG BUILD_REVISION
-
-LABEL org.opencontainers.image.title="S3 Web UI" \
-      org.opencontainers.image.description="Graphical web interface for S3 object storage" \
-      org.opencontainers.image.url="https://github.com/wenisch-tech/s3webui" \
-      org.opencontainers.image.source="https://github.com/wenisch-tech/s3webui" \
-      org.opencontainers.image.authors="Jean-Fabian Wenisch" \
-      org.opencontainers.image.licenses="GPL-3.0" \
-      org.opencontainers.image.vendor="wenisch.tech" \
-      org.opencontainers.image.version="${BUILD_VERSION}" \
-      org.opencontainers.image.revision="${BUILD_REVISION}" \
-      org.opencontainers.image.created="${BUILD_DATE}"
-
-ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=20.0 -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom"
-
-# H2 database and the generated encryption key live here. Mount a volume on it, or the stored S3
-# secrets are lost on every restart.
-ENV APP_DATA_DIR=/app/data
-VOLUME ["/app/data"]
-
-COPY target/s3webui-*.jar /app/app.jar
-
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates && addgroup -g 65532 app && adduser -D -u 65532 -G app app
+LABEL org.opencontainers.image.title="S3 Web UI (Go downstream)" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+COPY --from=build /s3webui /usr/local/bin/s3webui
+COPY --from=build /source.tar.gz /usr/share/s3webui/source.tar.gz
+COPY LICENSE THIRD_PARTY_LICENSES.md NOTICE.md /usr/share/s3webui/
+ENV HTTP_ADDR=:8080 SOURCE_ARCHIVE=/usr/share/s3webui/source.tar.gz
+USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["/usr/local/bin/s3webui"]

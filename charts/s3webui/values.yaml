@@ -1,38 +1,28 @@
-# Keep this at 1 unless you point the application at PostgreSQL *and* enable sticky sessions:
-# the default H2 file database tolerates a single writer, and HTTP sessions are held in memory.
+# Go downstream. PostgreSQL and APP_ENCRYPTION_KEY are mandatory.
 replicaCount: 1
-
-# Recreate avoids two pods holding the H2 file at the same time during a rollout.
 strategy:
-  type: Recreate
-
+  type: RollingUpdate
 image:
-  registry: ghcr.io
-  repository: wenisch-tech/s3webui
-  tag: latest
+  registry: local
+  repository: s3webui-go
+  tag: dev
   pullPolicy: IfNotPresent
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
-
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   fsGroup: 65532
-
 securityContext:
   allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
   capabilities:
-    drop:
-      - ALL
-  readOnlyRootFilesystem: false
-
+    drop: [ALL]
 service:
   type: ClusterIP
   port: 8080
   targetPort: 8080
-
 ingress:
   enabled: false
   className: ""
@@ -43,128 +33,53 @@ ingress:
         - path: /
           pathType: Prefix
   tls: []
-
 resources:
   requests:
     cpu: 100m
-    memory: 256Mi
+    memory: 128Mi
   limits:
-    cpu: 500m
+    cpu: "1"
     memory: 512Mi
-
-# Persistent volume for the H2 database and the generated encryption key.
-# Required unless you use PostgreSQL and supply APP_ENCRYPTION_KEY yourself.
+# No application volume: sessions, grants, users and audit all live in PostgreSQL.
 persistence:
   enabled: false
   mountPath: /app/data
   size: 1Gi
-  accessModes:
-    - ReadWriteOnce
+  accessModes: [ReadWriteOnce]
   storageClass: ""
   existingClaim: ""
-
 nodeSelector: {}
-
 tolerations: []
-
 affinity: {}
-
-# Application configuration
 env:
-  # Honor X-Forwarded-* headers from the ingress so redirect URIs built for the OIDC flow use the
-  # public https:// origin. Safe to leave on even without a proxy in front.
-  SERVER_FORWARD_HEADERS_STRATEGY: "framework"
-  # Database. Leave SPRING_DATASOURCE_URL empty to use the bundled H2 file database in APP_DATA_DIR.
-  # For PostgreSQL set, for example:
-  #   SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/s3webui"
-  #   SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
-  #   SPRING_DATASOURCE_USERNAME: "s3webui"
-  #   SPRING_JPA_DATABASE_PLATFORM: "org.hibernate.dialect.PostgreSQLDialect"
-  APP_DATA_DIR: "/app/data"
-  # Default administrator, created on first start only. Change the password immediately.
-  ADMIN_EMAIL: "admin@s3webui.local"
-  # Disable every application sign-in method and give each visitor administrator access. Only use
-  # behind a trusted network boundary; local user management and OIDC are unavailable in this mode.
-  DISABLE_AUTHENTICATION: "false"
-  # Built-in S3 key offered to every signed-in user (optional; keys are normally added in the UI)
-  S3_ACCESS_KEY: ""
-  S3_SECRET_KEY: ""
-  S3_ENDPOINT_URL: ""
-  S3_REGION: "us-east-1"
-  S3_INSECURE_SKIP_TLS_VERIFY: "false"
-  # IAM management for the storage backend. On by default; the app detects at runtime whether
-  # the provider answers IAM calls and disables the panel with an explanation when it does not.
-  IAM_ENABLED: "true"
-  # OIDC / Keycloak (optional)
-  OIDC_ENABLED: "false"
-  OIDC_PROVIDER_NAME: "Single Sign-On"
-  OIDC_CLIENT_ID: ""
-  OIDC_ISSUER_URI: ""
-  OIDC_REQUIRED_ROLE: ""
-  # Create a local record the first time an unknown SSO user signs in
-  OIDC_CREATEUSERS: "true"
-  OIDC_INSECURE_SKIP_TLS_VERIFY: "false"
-  # If SSO login redirects back with a generic error and the log shows
-  # "authorization_request_not_found", the session cookie isn't round-tripping through the ingress.
-  # Uncomment these (requires ingress.tls / TLS termination in front - Secure cookies are dropped by
-  # browsers over plain HTTP, which would break sign-in entirely):
-  # SERVER_SERVLET_SESSION_COOKIE_SAME_SITE: "None"
-  # SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
-  # Multi-provider example:
-  # OIDC_PROVIDERS_0_NAME: "Company SSO"
-  # OIDC_PROVIDERS_0_CLIENT_ID: "s3webui"
-  # OIDC_PROVIDERS_0_ISSUER_URI: "https://auth.example.com/realms/main"
-  # OIDC_PROVIDERS_1_NAME: "Partner Login"
-  # OIDC_PROVIDERS_1_CLIENT_ID: "s3webui-partner"
-  # OIDC_PROVIDERS_1_ISSUER_URI: "https://login.partner.example/realms/partner"
-
-# Existing Kubernetes Secrets imported as environment variables, in the order listed.
-# These can be used alone or together with the chart-managed secrets below.
+  HTTP_ADDR: ":8080"
+  PUBLIC_URL: "https://s3webui.example.com"
+  COOKIE_SECURE: "true"
+  ADMIN_EMAIL: "admin@example.com"
+  SOURCE_ARCHIVE: "/usr/share/s3webui/source.tar.gz"
+# Supply DATABASE_URL, ADMIN_PASSWORD, APP_ENCRYPTION_KEY from a Kubernetes Secret.
 existingSecrets: []
-
-# Sensitive values stored in a chart-managed Kubernetes Secret.
-# On duplicate keys, these values take precedence over existingSecrets.
 secrets: {}
-  # ADMIN_PASSWORD: "change-me-on-first-login"
-  # Base64 encoded 32 byte AES key protecting the stored S3 secrets.
-  # Leave unset to have one generated into APP_DATA_DIR/encryption.key (needs persistence enabled).
-  # APP_ENCRYPTION_KEY: "base64-encoded-32-byte-key"
-  # SPRING_DATASOURCE_PASSWORD: "your-database-password"
-  # S3_ACCESS_KEY: "your-access-key"
-  # S3_SECRET_KEY: "your-secret-key"
-  # OIDC_CLIENT_SECRET: "your-client-secret"
-  # OIDC_PROVIDERS_0_CLIENT_SECRET: "your-client-secret"
-  # OIDC_PROVIDERS_1_CLIENT_SECRET: "your-other-client-secret"
-
-# A slow-starting instance (H2/Flyway/Hibernate init under the CPU limit below) fails liveness before
-# it ever finishes booting, restarting the pod in an endless loop. startupProbe gives it a generous,
-# dedicated budget - kubelet holds off running liveness/readiness at all until this one succeeds - so
-# their own budgets below can stay tight for steady-state without also gating the cold start.
 startupProbe:
   enabled: true
   httpGet:
-    path: /actuator/health/readiness
+    path: /healthz
     port: 8080
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 30
-
-# Liveness and readiness intentionally use different health groups, not the combined /actuator/health:
-# a transient dependency hiccup (e.g. the database pool briefly exhausted under load) should pull the
-# pod out of service via readiness, not kill and restart it via liveness - the process itself is fine.
 livenessProbe:
   enabled: true
   httpGet:
-    path: /actuator/health/liveness
+    path: /livez
     port: 8080
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
-
 readinessProbe:
   enabled: true
   httpGet:
-    path: /actuator/health/readiness
+    path: /healthz
     port: 8080
   periodSeconds: 5
   timeoutSeconds: 3

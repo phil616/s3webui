@@ -1,0 +1,28 @@
+name: Manual upstream review
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Full 40-character upstream commit SHA to review (never applied)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate report without applying changes
+        shell: pwsh
+        env:
+          UPSTREAM_TARGET: ${{ inputs.target }}
+        run: ./scripts/review-upstream.ps1 -Target $env:UPSTREAM_TARGET
+      - uses: actions/upload-artifact@v7
+        with:
+          name: upstream-review
+          path: docs/upstream/reviews/
+          retention-days: 30

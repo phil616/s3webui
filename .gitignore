@@ -17,3 +17,9 @@ node_modules/
 /data/
 *.mv.db
 *.trace.db
+
+.env
+/bin/
+/.local/
+/test-results/
+/playwright-report/
