@@ -4,16 +4,30 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/wenisch-tech/s3webui/downstream/internal/app"
+	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/wenisch-tech/s3webui/downstream/internal/app"
 )
 
+// Set by scripts/package-release.ps1 for published binaries.
+var version = "dev"
+var commit = "unknown"
+var buildDate = "unknown"
+
 func main() {
+	showVersion := flag.Bool("version", false, "Print version, source commit, build date and exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Printf("s3webui %s (commit %s, built %s)\n", version, commit, buildDate)
+		return
+	}
 	if e := run(); e != nil {
 		slog.Error("server stopped", "error", e)
 		os.Exit(1)

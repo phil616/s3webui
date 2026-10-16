@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.0.0 (Go/PostgreSQL downstream) - 2026-10-16
+
+First release of phil616/s3webui's independently versioned Go/PostgreSQL downstream.
+Includes a Chinese/English interface, S3 administration, manual upstream review tooling,
+and a Linux amd64 binary distribution with its complete corresponding source.
+The original AGPLv3 license and upstream attribution are retained.
+See [release notes](docs/releases/v1.0.0.md) for artifacts, migration and compatibility boundaries.
+
+The entries below describe the original upstream project and its independent version history.
+
 ## v1.6.0 - 2026-10-15
 
 ## [1.6.0](https://github.com/wenisch-tech/s3webui/compare/v1.5.6...v1.6.0) (2026-10-15)

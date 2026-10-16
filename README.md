@@ -24,6 +24,9 @@ Go 可执行文件内置前端，无需 Java、H2 或 Node 浏览器运行依赖
 
 ## Docker Compose
 
+Linux amd64 原生运行包见 [v1.0.0 Release](https://github.com/phil616/s3webui/releases/tag/v1.0.0)。
+包内包含可执行文件、对应源码和运行说明；使用前可通过 `SHA256SUMS` 校验。
+
 1. 复制 `.env.example` 为 `.env`，填写唯一管理员密码、数据库密码和加密密钥。
 2. 生成密钥：`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`。
 3. 执行 `docker compose up --build -d`，访问 http://localhost:8080。

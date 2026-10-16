@@ -1,12 +1,12 @@
 apiVersion: v2
 name: s3webui
 description: Go/PostgreSQL downstream of S3 Web UI
-version: 2.0.0-go.1
-appVersion: "2.0.0-go.1"
+version: 1.0.0
+appVersion: "1.0.0"
 type: application
 keywords: [s3, object-storage, webui, postgres]
 sources:
   - https://github.com/wenisch-tech/s3webui
 annotations:
   artifacthub.io/license: AGPL-3.0-only
-  artifacthub.io/prerelease: "true"
+  artifacthub.io/prerelease: "false"
