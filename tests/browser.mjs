@@ -1,20 +1,120 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Run only against an isolated disposable PostgreSQL database.
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { createServer } from "node:net";
+import { createServer } from "node:http";
+import pg from "pg";
 const dsn = process.env.BROWSER_DATABASE_URL;
-if (!dsn)
-  throw Error(
-    "Set BROWSER_DATABASE_URL to an isolated disposable PostgreSQL database",
+if (!dsn) throw Error("Set BROWSER_DATABASE_URL to an isolated test database");
+const db = new pg.Client({ connectionString: dsn });
+await db.connect();
+const schema = "browser_" + randomBytes(8).toString("hex");
+await db.query("CREATE SCHEMA " + schema);
+const databaseURL = new URL(dsn);
+databaseURL.searchParams.set("search_path", schema);
+const key = "a+b #?%<img>.txt";
+let complete = 0,
+  parts = 0,
+  put = 0,
+  copies = 0,
+  deletes = 0;
+const xml = (s) =>
+  String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&apos;",
+      })[c],
   );
+const s3 = createServer(async (req, res) => {
+  try {
+    const u = new URL(req.url, "http://s3.test");
+    const b = [];
+    for await (const c of req) b.push(c);
+    const body = Buffer.concat(b);
+    res.setHeader("Content-Type", "application/xml");
+    if (req.method === "GET" && u.pathname === "/") {
+      res.end(
+        "<ListAllMyBucketsResult><Buckets><Bucket><Name>design-test</Name><CreationDate>2026-10-16T00:00:00Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+      );
+      return;
+    }
+    if (req.method === "GET" && u.searchParams.get("list-type") === "2") {
+      const prefix = u.searchParams.get("prefix") ?? "";
+      res.end(
+        "<ListBucketResult><Name>design-test</Name><IsTruncated>false</IsTruncated>" +
+          (prefix
+            ? ""
+            : `<Contents><Key>${xml(key)}</Key><Size>3</Size><LastModified>2026-10-16T00:00:00Z</LastModified></Contents><Contents><Key>Delete</Key><Size>1</Size><LastModified>2026-10-16T00:00:00Z</LastModified></Contents>`) +
+          (u.searchParams.get("delimiter") === "/" && !prefix
+            ? "<CommonPrefixes><Prefix>reports/</Prefix></CommonPrefixes>"
+            : "") +
+          "</ListBucketResult>",
+      );
+      return;
+    }
+    if (req.method === "HEAD") {
+      res.setHeader("ETag", '"source-etag"');
+      res.setHeader("Content-Length", "3");
+      res.end();
+      return;
+    }
+    if (req.method === "POST" && u.searchParams.has("uploads")) {
+      res.end(
+        "<InitiateMultipartUploadResult><Bucket>design-test</Bucket><Key>large.bin</Key><UploadId>upload+/=</UploadId></InitiateMultipartUploadResult>",
+      );
+      return;
+    }
+    if (req.method === "PUT" && u.searchParams.has("partNumber")) {
+      parts++;
+      res.setHeader("ETag", '"opaque-' + parts + '"');
+      res.end();
+      return;
+    }
+    if (req.method === "POST" && u.searchParams.has("uploadId")) {
+      complete++;
+      res.end(
+        '<CompleteMultipartUploadResult><Bucket>design-test</Bucket><Key>large.bin</Key><ETag>"complete"</ETag></CompleteMultipartUploadResult>',
+      );
+      return;
+    }
+    if (req.method === "PUT" && req.headers["x-amz-copy-source"]) {
+      copies++;
+      res.end('<CopyObjectResult><ETag>"copy"</ETag></CopyObjectResult>');
+      return;
+    }
+    if (req.method === "PUT") {
+      put++;
+      res.setHeader("ETag", '"put"');
+      res.end();
+      return;
+    }
+    if (req.method === "DELETE") {
+      deletes++;
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+    res.statusCode = 404;
+    res.end("<Error><Code>NoSuchBucketPolicy</Code></Error>");
+  } catch (e) {
+    res.statusCode = 500;
+    res.end(String(e));
+  }
+});
+await new Promise((r) => s3.listen(0, "127.0.0.1", r));
+const s3URL = "http://127.0.0.1:" + s3.address().port;
 const probe = createServer();
 await new Promise((r) => probe.listen(0, "127.0.0.1", r));
 const port = probe.address().port;
 await new Promise((r) => probe.close(r));
-const base = `http://127.0.0.1:${port}`;
+const base = "http://127.0.0.1:" + port;
 const child = spawn(
   process.env.BROWSER_SERVER_BINARY ||
     `bin/s3webui${process.platform === "win32" ? ".exe" : ""}`,
@@ -22,14 +122,12 @@ const child = spawn(
   {
     env: {
       ...process.env,
-      DATABASE_URL: dsn,
-      HTTP_ADDR: `127.0.0.1:${port}`,
+      DATABASE_URL: databaseURL.toString(),
+      HTTP_ADDR: "127.0.0.1:" + port,
       PUBLIC_URL: base,
       ADMIN_EMAIL: "browser@example.com",
       ADMIN_PASSWORD: "browser-test-password",
-      APP_ENCRYPTION_KEY:
-        process.env.BROWSER_ENCRYPTION_KEY ||
-        Buffer.alloc(32, 7).toString("base64"),
+      APP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
       SOURCE_URL: "https://example.com/test-source",
       COOKIE_SECURE: "false",
     },
@@ -43,14 +141,28 @@ child.stderr.on("data", (b) => (logs += b));
 child.on("error", (e) => (logs += e));
 let browser, page;
 const errors = [];
+await mkdir(".local/screenshots/restored", { recursive: true });
+const screenshot = async (name) =>
+  page.screenshot({
+    path: ".local/screenshots/restored/" + name + ".png",
+    fullPage: true,
+  });
+const switchLanguage = async (language) => {
+  await page.waitForFunction(() => Boolean(window.__s3i18n));
+  await Promise.all([
+    page.waitForEvent("load"),
+    page.locator("[data-language]").selectOption(language),
+  ]);
+  assert.equal(await page.locator("html").getAttribute("lang"), language);
+};
 try {
   for (let i = 0; i < 100; i++) {
-    if (child.exitCode !== null) throw Error("Server exited: " + logs);
+    if (child.exitCode !== null) throw Error(logs);
     try {
       if ((await fetch(base + "/healthz")).ok) break;
     } catch {}
-    if (i === 99) throw Error("Server did not start: " + logs);
     await new Promise((r) => setTimeout(r, 100));
+    if (i === 99) throw Error(logs);
   }
   browser = await chromium.launch({
     headless: true,
@@ -64,172 +176,132 @@ try {
   });
   page = await context.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
-  page.on("dialog", (d) => d.accept());
-  let completed = 0,
-    aborted = 0,
-    parts = 0;
-  const key = "中文//../a+b #?%<img>.txt";
-  await context.route(base + "/api/buckets**", async (route) => {
-    const req = route.request(),
-      u = new URL(req.url());
-    let body = {};
-    if (u.pathname === "/api/buckets")
-      body = {
-        Buckets: [
-          { Name: "test-bucket", CreationDate: "2026-10-16T00:00:00Z" },
-        ],
-      };
-    else if (u.pathname.endsWith("/multipart/initiate"))
-      body = { UploadId: "upload+/=" };
-    else if (u.pathname.endsWith("/multipart/part")) {
-      parts++;
-      assert.equal(u.searchParams.get("uploadId"), "upload+/=");
-      body = { ETag: `"etag-${u.searchParams.get("partNumber")}"` };
-    } else if (u.pathname.endsWith("/multipart/complete")) {
-      completed++;
-      assert.equal(req.postDataJSON().parts.length, 3);
-      body = { ETag: '"multipart-etag"' };
-    } else if (u.pathname.endsWith("/multipart/abort")) {
-      aborted++;
-      body = {};
-    } else if (u.pathname.endsWith("/versions"))
-      body = {
-        Versions: [{ Key: key, VersionId: "null", Size: 3, IsLatest: true }],
-        DeleteMarkers: [
-          { Key: "deleted", VersionId: "marker", IsLatest: true },
-        ],
-        IsTruncated: false,
-      };
-    else if (u.pathname.includes("/config/")) body = { Status: "Enabled" };
-    else if (u.pathname.endsWith("/objects"))
-      body = {
-        Contents: [{ Key: key, Size: 3, LastModified: "2026-10-16T00:00:00Z" }],
-        CommonPrefixes: [{ Prefix: "folder/" }],
-        IsTruncated: false,
-      };
-    else if (u.pathname.endsWith("/objects/head")) {
-      assert.equal(u.searchParams.get("key"), key);
-      body = { ETag: '"opaque"', Metadata: { note: "<script>bad</script>" } };
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(body),
-    });
-  });
+  page.on("dialog", (d) => d.accept("new-name.txt"));
   await page.goto(base);
-  await page.getByRole("heading", { name: "登录", exact: true }).waitFor();
-  assert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
-  assert.ok(
-    await page.getByRole("link", { name: "获取当前版本源码" }).isVisible(),
-  );
-  await page.locator("#language").selectOption("en");
-  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
+  await page.getByText("欢迎回来", { exact: true }).waitFor();
+  await screenshot("login-zh");
+  assert.equal(await page.locator("html").getAttribute("lang"), "zh");
+  await switchLanguage("en");
+  await page.getByText("Welcome back", { exact: true }).waitFor();
+  await screenshot("login-en");
   await page.reload();
-  await page.getByRole("heading", { name: "Sign in", exact: true }).waitFor();
-  await page.getByLabel("Email", { exact: true }).fill("browser@example.com");
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("browser-test-password");
+  await page.getByText("Welcome back", { exact: true }).waitFor();
+  await page.locator("#email").fill("browser@example.com");
+  await page.locator("#password").fill("browser-test-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page.getByRole("heading", { name: "Buckets", exact: true }).waitFor();
+  await page.locator(".app-topbar").waitFor();
+  assert.equal(await page.locator(".topbar-inner").count(), 1);
+  assert.equal(await page.locator(".layout aside").count(), 0);
   await page
-    .getByRole("button", { name: "S3 connections", exact: true })
+    .getByRole("link", { name: "Settings", exact: true })
+    .first()
     .click();
+  await page.locator("#adminTabBtn-keys").waitFor();
+  await page.getByRole("button", { name: "New key", exact: true }).click();
+  await page.locator("#credentialModal:not(.hidden)").waitFor();
+  await page.locator("#credentialName").fill("Original design");
+  await page.locator("#credentialEndpoint").fill(s3URL);
+  await page.locator("#credentialAccessKey").fill("test-access");
+  await page.locator("#credentialSecretKey").fill("test-secret");
   await page
-    .getByRole("button", { name: "Create connection", exact: true })
+    .locator("#credentialModal")
+    .getByRole("button", { name: "Save", exact: true })
     .click();
-  const connectionName = "browser-" + Date.now();
-  await page.getByLabel("Name", { exact: true }).fill(connectionName);
-  await page.getByLabel("Access key", { exact: true }).fill("test");
-  await page.getByLabel("Secret key", { exact: true }).fill("browser-secret");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.locator("#dialog").waitFor({ state: "hidden" });
-  await page.locator("#connection").selectOption({ label: connectionName });
-  await page.getByRole("button", { name: "▧ test-bucket" }).waitFor();
-  await page.getByRole("button", { name: "Open bucket",exact:true }).click();
-  await page.getByLabel("Bucket name",{exact:true}).fill("test-bucket");
-  await page.getByRole("button",{name:"Load",exact:true}).click();
-  await page.locator("#dialog").waitFor({state:"hidden"});
-  await page.getByRole("heading", { name: "test-bucket" }).waitFor();
-  await page.getByRole("cell", { name: key, exact: true }).waitFor();
-  assert.equal(await page.locator("#content img").count(), 0);
+  await page.locator("#credentialModal").waitFor({ state: "hidden" });
+  await page.getByText("Original design", { exact: true }).first().waitFor();
+  await screenshot("settings-en");
   await page
-    .getByRole("button", { name: "Object metadata", exact: true })
+    .getByRole("link", { name: "Buckets", exact: true })
+    .first()
     .click();
-  await page.locator("dialog pre").waitFor();
-  assert.match(
-    await page.locator("dialog pre").textContent(),
-    /<script>bad<\/script>/,
-  );
-  assert.equal(await page.locator("dialog script").count(), 0);
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.getByRole("button", { name: "Versions", exact: true }).click();
-  await page.getByText("Delete marker", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "Versions", exact: true }).click();
-  await page.locator("#files").setInputFiles({
-    name: "large.bin",
-    mimeType: "application/octet-stream",
-    buffer: Buffer.alloc(17 * 1024 ** 2),
-  });
-  await page.waitForFunction(
-    () => !document.getElementById("upload-status")?.textContent,
-    { timeout: 30000 },
-  );
-  for (let i = 0; i < 100 && completed === 0; i++)
-    await page.waitForTimeout(100);
-  assert.equal(completed, 1);
-  assert.equal(parts, 3);
-  assert.equal(aborted, 0);
-  await page.locator("#language").selectOption("zh");
-  await page.getByRole("button", { name: "存储桶配置", exact: true }).click();
+  await page.locator(".bucket-card").first().waitFor();
+  await page.locator(".bucket-card .bucket-name").first().waitFor();
+  await screenshot("buckets-en");
+  await page.locator("#viewTableBtn").click();
+  assert.ok(await page.locator("#bucketTableView").isVisible());
+  await page.locator("#viewPieBtn").click();
   await page
-    .getByRole("heading", { name: "存储桶配置", exact: true })
-    .waitFor();
-  await page.locator("#config-kind").selectOption("versioning");
-  await page.getByRole("button", { name: "读取", exact: true }).click();
-  await page.waitForFunction(() =>
-    document.getElementById("config-document").value.includes("Enabled"),
-  );
-  await page.getByRole("button", { name: "取消", exact: true }).click();
-  await mkdir(".local/screenshots", { recursive: true });
-  await page.screenshot({
-    path: ".local/screenshots/objects-zh.png",
-    fullPage: true,
-  });
+    .locator("#bucketPieChart path")
+    .first()
+    .waitFor({ state: "attached" });
+  assert.ok(await page.locator("#bucketPieView").isVisible());
+  await page.locator("#viewCardsBtn").click();
+  await switchLanguage("zh");
+  await page.getByRole("button", { name: "新建存储桶", exact: true }).waitFor();
+  await screenshot("buckets-zh");
+  await page.locator(".bucket-name").first().click();
+  await page.locator("#objectTableBody").waitFor();
+  await page.getByText(key, { exact: true }).waitFor();
+  assert.equal(await page.locator("#objectTableBody img").count(), 0);
+  await page.getByText("Delete", { exact: true }).waitFor();
+  await screenshot("objects-zh");
+  await switchLanguage("en");
+  await page.getByText(key, { exact: true }).waitFor();
+  await screenshot("objects-en");
+  await page.locator("#objectSearch").fill("Delete");
+  assert.equal(await page.locator("#objectTableBody tr:visible").count(), 1);
+  await page.locator("#objectSearch").fill("");
+  await page.getByRole("button", { name: "Upload", exact: true }).click();
+  await page.locator("#uploadModal:not(.hidden)").waitFor();
+  await page
+    .locator("#uploadModal input[type=file]")
+    .setInputFiles({
+      name: "large.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.alloc(17 * 1024 ** 2),
+    });
+  await page.locator("#startUploadBtn").click();
+  await page.getByText(/Upload complete:/).waitFor({ timeout: 30000 });
+  assert.equal(complete, 1);
+  assert.equal(parts, 4);
+  await page.locator("#uploadModal .modal-header button").click();
+  await page.locator("#objectTableBody").waitFor();
+  await page
+    .getByRole("link", { name: "Settings", exact: true })
+    .first()
+    .click();
+  await switchLanguage("zh");
+  await page.locator("#adminTabBtn-users").click();
+  await page.locator("#userTableBody tr").first().waitFor();
+  await screenshot("settings-zh");
+  await page
+    .getByRole("link", { name: "历史记录", exact: true })
+    .first()
+    .click();
+  await page.locator("#historyTableBody").waitFor();
+  await screenshot("history-zh");
+  await page.getByRole("link", { name: "存储桶", exact: true }).first().click();
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".bucket-card").first().waitFor();
+  await screenshot("mobile-zh");
   assert.ok(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
-    "Mobile page overflows horizontally",
   );
-  await page.screenshot({
-    path: ".local/screenshots/mobile-zh.png",
-    fullPage: true,
-  });
-  assert.ok(
-    await page
-      .getByRole("button", { name: "上传文件", exact: true })
-      .isVisible(),
-  );
-  await page.getByRole("button", { name: "退出登录", exact: true }).click();
-  await page.getByRole("heading", { name: "登录", exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    "Browser checks passed: login, Chinese/English persistence, connection creation, object escaping, metadata, versions, multipart upload, bucket configuration, mobile and logout.",
+    "Restored upstream UI passed: original login/topbar/cards/table/chart/object controls/settings/history; bilingual text, raw data preservation and actual Go/S3 multipart requests.",
   );
 } catch (e) {
   console.error(
-    "Browser errors:",
+    "Page errors:",
     errors,
     "Server:",
     logs,
-    "Page:",
+    "Body:",
     await page?.locator("body").innerText(),
   );
+  if (page) await screenshot("failure");
   throw e;
 } finally {
   if (browser) await browser.close();
-  child.kill();
+  const exited = new Promise((r) => child.once("exit", r));
+  if (child.exitCode === null) {
+    child.kill();
+    await exited;
+  }
+  await new Promise((r) => s3.close(r));
+  await db.query("DROP SCHEMA " + schema + " CASCADE");
+  await db.end();
 }

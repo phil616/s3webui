@@ -42,6 +42,10 @@
       </a>
     </div>
     <div class="ml-auto flex items-center gap-2">
+      <select class="input w-auto" data-language aria-label="Language">
+        <option value="en" th:selected="${locale == 'en'}">EN</option>
+        <option value="zh" th:selected="${locale == 'zh'}">中文</option>
+      </select>
       <span
         th:if="${!authenticationDisabled}"
         sec:authorize="isAuthenticated()"
@@ -64,13 +68,13 @@
       <form th:if="${!authenticationDisabled}" th:action="@{/logout}" method="post">
         <button class="btn-secondary" type="submit">
           <i data-lucide="log-out"></i>
-          <span>Logout</span>
+          <span class="hidden sm:inline">Logout</span>
         </button>
       </form>
       <button
         class="btn-icon"
         @click="toggleTheme()"
-        :aria-label="theme === 'dark' ? 'Use light theme' : 'Use dark theme'"
+        :aria-label="window.__s3i18n.text(theme === 'dark' ? 'Use light theme' : 'Use dark theme')"
       >
         <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'" aria-hidden="true"></i>
       </button>
@@ -290,6 +294,7 @@
       Version
     </a>
   </p>
+  <p class="mt-1"><a class="hover:text-brand-600" th:href="${sourceURL}" target="_blank" rel="noopener noreferrer">Source code of this version</a></p>
 </footer>
 <div th:fragment="scripts">
   <div id="pageLoader" class="page-loader" aria-hidden="true" aria-live="polite">

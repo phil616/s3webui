@@ -82,10 +82,15 @@
         </div>
       </section>
       <div class="mt-4 flex justify-center">
+        <select class="input mr-2 w-auto" data-language aria-label="Language">
+          <option value="en" th:selected="${locale == 'en'}">English</option>
+          <option value="zh" th:selected="${locale == 'zh'}">简体中文</option>
+        </select>
         <button class="btn-icon" type="button" @click="toggleTheme()" aria-label="Toggle theme">
           <i :data-lucide="theme === 'dark' ? 'sun' : 'moon'"></i>
         </button>
       </div>
+      <div th:replace="~{fragments/shell :: footer}"></div>
     </main>
     <div th:replace="~{fragments/shell :: scripts}"></div>
   </body>

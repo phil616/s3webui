@@ -1,7 +1,8 @@
 # Third-party fonts
 
-The Go downstream serves system fonts and does not bundle the legacy font or JavaScript assets
-in its active interface. The original files and their notices below are retained as upstream reference.
+The Go downstream uses the original author's templates, styles, logo, fonts and browser libraries.
+Their existing notices are preserved. Full installed production JavaScript license texts are copied
+by the build to `/licenses/third-party.txt`, served with the application and included in source archives.
 
 ## Active Go dependencies
 
@@ -12,10 +13,13 @@ the vendored modules and their original LICENSE/NOTICE files.
 | --- | --- | --- |
 | AWS SDK for Go v2 | Apache-2.0 | https://github.com/aws/aws-sdk-go-v2 |
 | Smithy Go | Apache-2.0 | https://github.com/aws/smithy-go |
+| Expr | MIT | https://github.com/expr-lang/expr |
 | pgx / pgpassfile / pgservicefile / puddle | MIT | https://github.com/jackc |
-| Go x/crypto, x/sync, x/text | BSD-3-Clause | https://go.googlesource.com/ |
+| Go x/crypto, x/net, x/sync, x/text | BSD-3-Clause | https://go.googlesource.com/ |
 
-The Go interface has no third-party browser runtime dependencies.
+Browser runtime: Alpine.js (MIT), CodeMirror and its language/editor packages (MIT), and Lucide (ISC).
+Tailwind CSS (MIT) compiles the unchanged original stylesheet. Babel and parse5 (MIT) provide build-time
+localization; they are not a second frontend framework. node-postgres (MIT) is used only in browser tests.
 Playwright is used only for development/browser checks (Apache-2.0; https://github.com/microsoft/playwright).
 
 S3WEBUI bundles the following fonts so the user interface does not depend on an external font service.

@@ -36,6 +36,10 @@ try {
     $sourceDir = Join-Path $stageDir $sourceName
     Push-Location $sourceDir
     try {
+        npm ci
+        Assert-NativeSuccess 'Install original frontend build dependencies'
+        npm run build
+        Assert-NativeSuccess 'Build original frontend with i18n'
         $env:GOOS = 'linux'
         $env:GOARCH = 'amd64'
         $env:GOAMD64 = 'v1'

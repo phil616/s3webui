@@ -37,6 +37,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	c := app.EnvConfig()
+	c.Version = version
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
 	s, e := app.New(startup, c)
 	cancel()

@@ -6,7 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"embed"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,14 +23,12 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/wenisch-tech/s3webui/downstream/src/main/resources"
 	"golang.org/x/crypto/bcrypt"
 )
 
 //go:embed schema.sql
 var schema string
-
-//go:embed web/*
-var web embed.FS
 
 type Server struct {
 	db            *pgxpool.Pool
@@ -40,6 +38,7 @@ type Server struct {
 	loginSlots    chan struct{}
 	transferSlots chan struct{}
 	httpClient    *http.Client
+	templates     *originalTemplates
 }
 type identity struct {
 	ID           int64  `json:"id"`
@@ -178,6 +177,10 @@ func New(ctx context.Context, c Config) (*Server, error) {
 	transport.ResponseHeaderTimeout = 30 * time.Second
 	transport.MaxIdleConnsPerHost = 10
 	s := &Server{db: db, cipher: a, cfg: c, loginSlots: make(chan struct{}, 4), transferSlots: make(chan struct{}, 2), httpClient: &http.Client{Transport: transport}}
+	s.templates, e = loadOriginalTemplates()
+	if e != nil {
+		return nil, e
+	}
 	s.routes()
 	ok = true
 	return s, nil
@@ -208,6 +211,19 @@ func (s *Server) routes() {
 	})
 	m.HandleFunc("POST /api/login", s.wrap(s.login))
 	auth := func(pattern string, fn endpoint) { m.Handle(pattern, s.authenticate(s.wrap(fn))) }
+	m.HandleFunc("GET /login", s.wrap(s.originalPage("login")))
+	m.Handle("GET /access-denied", s.pageAuth(s.wrap(s.originalPage("access-denied"))))
+	m.HandleFunc("POST /login", s.wrap(s.formLogin))
+	for pattern, page := range map[string]string{"GET /{$}": "buckets", "GET /buckets/{bucket}": "bucket", "GET /history": "history", "GET /search": "search", "GET /admin/settings": "admin/settings"} {
+		m.Handle(pattern, s.pageAuth(s.wrap(s.originalPage(page))))
+	}
+	m.Handle("POST /logout", s.pageAuth(s.wrap(s.formLogout)))
+	auth("GET /api/ui/search", s.originalSearchAPI)
+	auth("GET /api/buckets/{bucket}/objects/search", s.originalSearchAPI)
+	auth("GET /api/buckets/{bucket}/stats", s.originalStats)
+	auth("POST /api/buckets/{bucket}/objects/upload", s.originalUpload)
+	auth("POST /api/buckets/{bucket}/objects/delete", s.originalDelete)
+	auth("POST /api/buckets/{bucket}/objects/move", s.originalMove)
 	auth("GET /api/me", func(w http.ResponseWriter, r *http.Request) error { writeJSON(w, 200, user(r)); return nil })
 	auth("POST /api/logout", s.logout)
 	auth("GET /api/credentials", s.credentials)
@@ -245,19 +261,16 @@ func (s *Server) routes() {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, licenseText)
 	})
-	assets, _ := fs.Sub(web, "web")
-	m.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assets))))
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		b, _ := web.ReadFile("web/index.html")
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(b)
-	})
+	assets, _ := fs.Sub(resources.Files, "static")
+	for _, path := range []string{"/css/", "/js/", "/fonts/", "/img/", "/licenses/"} {
+		m.Handle("GET "+path, http.FileServer(http.FS(assets)))
+	}
 	s.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 			u, e := url.Parse(r.Header.Get("Origin"))
 			p, _ := url.Parse(s.cfg.PublicURL)

@@ -63,6 +63,9 @@ func run(directory, output, epoch, executable string) (err error) {
 		if walkErr != nil {
 			return walkErr
 		}
+		if entry.IsDir() && entry.Name() == "node_modules" {
+			return filepath.SkipDir
+		}
 		info, e := entry.Info()
 		if e != nil {
 			return e

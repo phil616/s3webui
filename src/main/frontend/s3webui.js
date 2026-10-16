@@ -1,4 +1,6 @@
 import Alpine from 'alpinejs';
+import './i18n.js';
+import { goFetch } from './go-api.js';
 import './upload.js';
 import { createJsonEditor } from './editor.js';
 import { createObjectTableController, syncObjectSelectAll,
@@ -104,7 +106,7 @@ window.csrfToken = csrfToken;
 const apiFetch = (url, options = {}) => {
   const method = (options.method || 'GET').toUpperCase(), headers = new Headers(options.headers || {});
   if (!['GET','HEAD','OPTIONS','TRACE'].includes(method)) { const token = csrfToken(); if (token) headers.set('X-XSRF-TOKEN', token); }
-  return fetch(appUrl(url), {...options, headers, credentials:'same-origin'});
+  return goFetch(appUrl(url), {...options, headers, credentials:'same-origin'});
 };
 window.apiFetch = apiFetch;
 async function loadS3SessionStatus() { if (!document.getElementById('s3SessionModal')) return null; try { const response = await apiFetch('/api/s3/session', {headers:{Accept:'application/json'}}); return response.ok ? response.json() : null; } catch (error) { showToast(error.message || 'Failed to read the S3 session status', 'danger'); return null; } }

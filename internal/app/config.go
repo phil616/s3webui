@@ -14,6 +14,7 @@ import (
 )
 
 type Config struct {
+	Version                                                                                             string
 	DatabaseURL, Address, AdminEmail, AdminPassword, EncryptionKey, SourceURL, PublicURL, SourceArchive string
 	SecureCookies                                                                                       bool
 }

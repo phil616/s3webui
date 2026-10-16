@@ -1,27 +1,22 @@
-# 改造验证记录
+# 原前端恢复验证记录
 
-日期：2026-10-16。测试环境：Windows、Go 1.27、Node.js 24、独立本地 PostgreSQL、Chrome 无头浏览器。
+日期：2026-10-16。环境：Windows、Go 1.27、Node.js 24、真实 PostgreSQL、Chrome 无头浏览器。
 
-已在本地执行并通过：
+本次纠正了此前把前端另行重写的问题。实际界面恢复为原作者的 `src/main/resources/templates/`
+和 `src/main/frontend/`，并删除 `internal/app/web/` 中的替代页面、样式与控制器。
 
-- `go vet ./...` 和 Linux/amd64、CGO 禁用的 Go 构建。
-- 设置 `TEST_DATABASE_URL` 后执行 Go 测试，包含真实 PostgreSQL 认证/会话/授权、重启、密钥保护、
-  S3 SDK 请求语义、分段上传、复制后的删除失败、桶配置及公开源码/许可证入口；没有跳过数据库测试。
-- `npm test`：26 项通过，其中 20 项为保留的上游前端工具测试，6 项为本次新界面测试。
-- `npm run build`：校验所有实际服务的浏览器模块。
-- `npm run test:browser`：实际启动 Go 服务并连接 PostgreSQL，验证中英文偏好、登录/退出、
-  连接创建、对象键安全显示、元数据、版本、17 MiB 分段上传、桶配置及移动端布局。
-  桌面与移动端截图位于忽略目录 `.local/screenshots/`。S3 响应在浏览器测试中模拟。
-- `helm lint charts/s3webui` 及带现有 Secret 的模板渲染。
-- 使用 actionlint 检查新的 CI 和手动上游审查工作流。
-- 对基线 SHA 运行手动上游审查脚本，确认可以生成报告、空差异补丁与许可副本，不合并变更。
-- `git diff --check`，原 LICENSE 内容保持不变，内嵌许可证与其逐字节一致。
+验证项目：
 
-尚未在本机执行：
+- `npm test`：24 项通过。20 项原作者工具测试继续使用；新增检查确认 CSS、Logo 和桶/对象/搜索/历史/设置/IAM 核心模板与上游基线一致。
+- 中英文词条键一致，插值不引入额外数据占位符；技术标识符、协议值及 CSS 类保持原样。
+- Go 直接渲染原模板，六个主要页面均验证中英文及对象数据转义；登录仍是原表单，导航、对话框和控件 ID 保留。
+- 浏览器实际启动 Go、连接 PostgreSQL，再由 Go 官方 SDK 访问独立模拟 S3 HTTP 服务。
+  验证原登录页、顶部导航、桶卡片/列表/饼图、对象表格、筛选、设置、历史、语言偏好及移动端。
+- 17 MiB 上传通过原上传对话框完成四个 S3 分段。名为 `Delete` 的文件在中文界面仍保持原名，特殊字符对象键不被当作 HTML。
+- 截图位于 `.local/screenshots/restored/`，包括中英文登录、桶、对象、设置，以及中文历史和移动端页面。
 
-- Docker 构建及 Compose 启动：本机没有 Docker；已写入 CI 容器构建步骤。
-- Go race：本机没有相应 C 工具链；已写入 Linux CI。
-- GitHub Actions 云端执行、Kubernetes 实际部署，以及 AWS/指定兼容存储实机验收。
+构建顺序为 `npm ci && npm run build`，然后 `go test`/`go build`。CI、Docker 和本地打包脚本都使用同一入口。
+运行时仍为 Go/PostgreSQL，Node.js 只参与原前端构建。
 
-这份记录区分了实际通过、配置待执行和目标服务待验收；它不代表完整 AWS S3 认证。
-具体实现范围与发布前检查见 [S3 支持矩阵](S3-COMPATIBILITY.md)。
+此前 v1.0.0 的 CI 曾成功通过，但其界面与要求不符；这不构成对其设计的验收。
+本次修正没有覆盖 v1.0.0 的公开标签或下载产物。当前修正仍需另行验证目标真实 S3、实际 Kubernetes 部署。

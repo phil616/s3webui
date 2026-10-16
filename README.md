@@ -6,16 +6,17 @@ Copyright (C) 2026 Jean-Fabian Wenisch / wenisch.tech。
 继续采用 [GNU AGPLv3](LICENSE)，不提供担保；见 [修改与署名说明](NOTICE.md)。
 
 这是连接 AWS S3 或兼容存储的管理客户端。对象保存在 S3，PostgreSQL 保存用户、会话、加密连接、授权和审计。
-Go 可执行文件内置前端，无需 Java、H2 或 Node 浏览器运行依赖。
-原 Java/Thymeleaf 源码暂保留在 `src/`，作为来源和迁移参考，不参与 Go 构建或部署。
+Go 可执行文件内置原作者的前端，无需 Java、H2 或 Node 服务进程。
+原模板、CSS、Alpine.js、Lucide、CodeMirror、Logo 和字体继续作为实际界面使用，Go 负责模板模型和 API 适配。
+只增加中英文 i18n、语言选择器和源码入口，不重新设计页面。原 Java 代码保留为迁移参考。
 [上游原始 README](docs/upstream/README.original.md) 仅供历史参考，原配置不适用于本版本。
 
 ## 已实现
 
 - 本地账号、管理员用户管理、PostgreSQL 持久化会话，凭证授权逐请求重新校验。
 - S3 连接管理、AES-256-GCM 密钥及临时令牌加密，支持 AWS/自定义端点、区域和路径寻址。
-- 桶与对象分页、前缀导航、逐页搜索、上传/分段上传/取消、下载、元数据、复制/移动、删除及版本。
-- 桶策略、CORS、版本控制、生命周期、加密、标签、公共访问阻止和所有权配置。
+- 原作者的桶卡片/列表/饼图、前缀导航、筛选排序、全局与子文件夹搜索、上传进度、下载、批量复制/移动/删除。
+- 原界面的桶策略、CORS、设置和历史记录；其他版本及桶配置能力仍可通过 Go JSON API 使用。
 - 中英文切换，记住语言偏好，浏览器语言回退，本地化日期与数字，明暗主题。
 - 审计历史、AGPL 源码入口、只生成审查报告的手动上游更新工具。
 
@@ -24,14 +25,14 @@ Go 可执行文件内置前端，无需 Java、H2 或 Node 浏览器运行依赖
 
 ## Docker Compose
 
-Linux amd64 原生运行包见 [v1.0.0 Release](https://github.com/phil616/s3webui/releases/tag/v1.0.0)。
-包内包含可执行文件、对应源码和运行说明；使用前可通过 `SHA256SUMS` 校验。
+已发布的 [v1.0.0](https://github.com/phil616/s3webui/releases/tag/v1.0.0) 使用了后来撤销的重写界面。
+当前分支已恢复原作者前端；使用此修正需从当前分支重新构建，已发布标签和产物没有被覆盖。
 
 1. 复制 `.env.example` 为 `.env`，填写唯一管理员密码、数据库密码和加密密钥。
 2. 生成密钥：`node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`。
 3. 执行 `docker compose up --build -d`，访问 http://localhost:8080。
-4. 登录后在 **S3 连接** 创建连接，为普通用户填写授权：`*`、邮箱、`role:USER`、`role:ADMIN`，逗号分隔。
-   AWS endpoint 留空、区域填桶所在区域；兼容服务填写完整端点并按服务要求启用路径寻址。
+4. 登录后在 **设置 → S3 密钥** 创建连接，并通过原授权行编辑器选择所有登录用户、指定邮箱或应用角色。
+   AWS endpoint 留空、区域填桶所在区域；兼容服务填写完整端点，按原客户端习惯默认路径寻址。
 5. 选择连接后管理存储桶。已有私有桶也可通过当前连接下的服务端权限访问。
 
 容器内置该构建的完整对应源码及 Go 依赖，登录页的源码链接指向 `/source`。
@@ -39,8 +40,9 @@ Linux amd64 原生运行包见 [v1.0.0 Release](https://github.com/phil616/s3web
 
 ## 原生运行
 
-需要 Go 1.26+ 和 PostgreSQL 18（集成验证版本）。前端为原生 ES Modules，直接嵌入 Go，无额外打包产物。
-设置以下环境变量后运行 `go run ./cmd/s3webui` 或 `go build -o bin/s3webui ./cmd/s3webui`。
+需要 Go 1.26+、Node.js 24（构建用）和 PostgreSQL 18（集成验证版本）。
+先执行 `npm ci && npm run build` 构建原作者的前端，再设置以下环境变量并执行
+`go run ./cmd/s3webui` 或 `go build -o bin/s3webui ./cmd/s3webui`。运行时不需要 Node.js。
 
 | 变量 | 含义 |
 | --- | --- |

@@ -50,3 +50,5 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -mod=vendor -buildvcs=
 ```
 
 Replace VERSION, COMMIT and BUILD_DATE with the values from BUILD-INFO.json.
+When changing frontend sources, run `npm ci && npm run build` before the Go build so the original
+templates and stylesheet, their i18n transformations and bundled browser modules are refreshed.

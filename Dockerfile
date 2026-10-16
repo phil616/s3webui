@@ -1,8 +1,18 @@
+FROM node:24-alpine AS frontend
+WORKDIR /ui
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY scripts ./scripts
+COPY src/main ./src/main
+RUN npm run build
+
 FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=frontend /ui/src/main/resources/static /src/src/main/resources/static
+COPY --from=frontend /ui/src/main/resources/rendered /src/src/main/resources/rendered
 # Include preferred source, build scripts, notices and Go dependencies.
 RUN go mod vendor && tar -czf /source.tar.gz . && CGO_ENABLED=0 go build -mod=vendor -trimpath -o /s3webui ./cmd/s3webui
 

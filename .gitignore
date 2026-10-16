@@ -23,3 +23,7 @@ node_modules/
 /.local/
 /test-results/
 /playwright-report/
+/src/main/resources/rendered/
+/src/main/resources/static/css/
+/src/main/resources/static/js/
+/src/main/resources/static/licenses/

@@ -7,8 +7,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
 	github.com/aws/smithy-go v1.28.5
+	github.com/expr-lang/expr v1.17.8
 	github.com/jackc/pgx/v5 v5.11.0
 	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.61.0
 )
 
 require (

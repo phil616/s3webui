@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Restore the original author's templates, stylesheet, logo and frontend interactions.
+  Remove the replacement SPA; add Chinese/English localization and adapt the Go
+  backend to the original interface. The existing v1.0.0 artifacts are unchanged.
+
 ## v1.0.0 (Go/PostgreSQL downstream) - 2026-10-16
 
 First release of phil616/s3webui's independently versioned Go/PostgreSQL downstream.
