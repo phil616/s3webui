@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## v1.0.1 - 2026-10-16
 
-- Restore the original author's templates, stylesheet, logo and frontend interactions.
-  Remove the replacement SPA; add Chinese/English localization and adapt the Go
-  backend to the original interface. The existing v1.0.0 artifacts are unchanged.
+- Restore the original author's templates, stylesheet, logo and frontend interactions;
+  remove the replacement SPA.
+- Add Chinese/English localization and adapt the Go backend to the original interface.
+- Include Linux amd64 and corresponding source archives in this release.
+- The v1.0.0 tag and its published artifacts remain unchanged.
 
 ## v1.0.0 (Go/PostgreSQL downstream) - 2026-10-16
 
